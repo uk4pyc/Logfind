@@ -71,13 +71,13 @@ function render(){
     const photoHtml=shown.length?shown.map(p=>`<span class="photo"><a href="${p.link||'#'}" target="_blank">${p.src?`<img src="${p.src}">`:'Открыть фото'}</a><small>${p.date||''} ${p.location||''} ${airportPhotos.includes(p)?'<span class="badge">airport match</span>':''}</small></span>`).join(''):'<span class="muted">Автоматическое API-фото не найдено.</span>';
     const loaded=Object.prototype.hasOwnProperty.call(cache,x.reg);
     const links=loaded?`<div class="links"><a class="link" target="_blank" href="${jet(x)}">JetPhotos</a><a class="link" target="_blank" href="${air(x)}">Airliners.net</a><a class="link" target="_blank" href="${ps(x)}">PlaneSpotters</a></div>`:'';
-    return `<tr><td>${x.date}</td><td><b>${x.reg}</b></td><td class="route">${x.dep} → ${x.arr}</td><td>${x.type}</td><td><div class="photos">${photoHtml}</div>${links}</td></tr>`;
+    return `<tr><td>${x.date}</td><td><b>${x.display_reg || x.reg}</b></td><td class="route">${x.dep} → ${x.arr}</td><td>${x.type}</td><td><div class="photos">${photoHtml}</div>${links}</td></tr>`;
   }).join('');
 }
 function q(v){return encodeURIComponent(v||'')}
-function jet(x){return `https://www.jetphotos.com/registration/${q(x.reg)}?keywords=${q(x.dep||x.arr)}${x.date?`&year=${q(String(x.date).slice(-4))}`:''}`}
-function air(x){return `https://www.airliners.net/search?keywords=${q(x.reg+' '+(x.dep||x.arr))}`}
-function ps(x){return `https://www.planespotters.net/photos/${q(x.reg)}`}
+function jet(x){return `https://www.jetphotos.com/registration/${q(x.display_reg||x.reg)}?keywords=${q(x.dep||x.arr)}${x.date?`&year=${q(String(x.date).slice(-4))}`:''}`}
+function air(x){return `https://www.airliners.net/search?keywords=${q((x.display_reg||x.reg)+' '+(x.dep||x.arr))}`}
+function ps(x){return `https://www.planespotters.net/photos/${q(x.display_reg||x.reg)}`}
 </script>
 </body>
 </html>
