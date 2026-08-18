@@ -1,0 +1,58 @@
+
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Logbook Photo Finder</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#172033;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+header{background:#101827;color:white;padding:28px 5vw}header h1{margin:0;font-size:28px}header p{margin:7px 0 0;color:#aeb9ca}
+main{max-width:1250px;margin:28px auto;padding:0 20px}.panel{background:white;border:1px solid #e3e8f0;border-radius:18px;padding:22px;margin-bottom:18px;box-shadow:0 8px 30px #1720330b}
+.drop{border:2px dashed #b9c5d8;border-radius:15px;padding:32px;text-align:center}.drop input{margin:14px 0}.btn{border:0;border-radius:10px;padding:11px 16px;background:#172033;color:white;font-weight:700;cursor:pointer}.btn:disabled{opacity:.45}
+.stats{display:flex;gap:12px;flex-wrap:wrap}.stat{background:#f2f5f9;border-radius:12px;padding:13px 16px}.stat b{font-size:20px;display:block}
+.table{width:100%;border-collapse:collapse}.table th,.table td{padding:13px 10px;border-bottom:1px solid #edf0f4;text-align:left}.table th{font-size:12px;color:#6b7484;text-transform:uppercase}
+.photo{display:inline-flex;vertical-align:top;flex-direction:column;width:150px;margin:6px}.photo img{width:150px;height:100px;object-fit:cover;border-radius:9px;background:#e9edf3}.photo small{margin-top:5px;color:#687385}.badge{font-size:11px;padding:3px 6px;border-radius:6px;background:#e8f6ed;color:#18733a}.muted{color:#7a8493}
+#results{display:none}.row-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<header><h1>✈️ Logbook Photo Finder</h1><p>Найди фотографии конкретного борта по летной книжке — registration, airport и дате.</p></header>
+<main>
+<section class="panel">
+<div class="drop">
+<strong>Загрузи Excel с летной книжкой</strong><br>
+<input id="file" type="file" accept=".xlsx,.xls">
+<br><button class="btn" id="parse" disabled>Загрузить и обработать</button>
+<div id="msg" class="muted"></div>
+</div>
+</section>
+<section class="panel" id="summary" style="display:none">
+<div class="stats"><div class="stat"><b id="count">0</b>полётов с registration</div><div class="stat"><b>2</b>аэропорта на полёт</div><div class="stat"><b>✈️</b>автопоиск фото</div></div>
+</section>
+<section class="panel" id="results">
+<table class="table"><thead><tr><th>Date</th><th>Registration</th><th>Route</th><th>Type</th><th>Photos</th></tr></thead><tbody id="tbody"></tbody></table>
+</section>
+</main>
+<script>
+let rows=[];
+const file=document.getElementById('file'), parse=document.getElementById('parse');
+file.onchange=()=>parse.disabled=!file.files.length;
+parse.onclick=async()=>{
+ const fd=new FormData();fd.append('file',file.files[0]);msg.textContent='Обрабатываю Excel…';
+ const r=await fetch('/api/parse',{method:'POST',body:fd}); const j=await r.json();
+ if(j.error){msg.textContent=j.error;return}
+ rows=j.rows;count.textContent=j.count;summary.style.display='block';results.style.display='block';msg.textContent='';
+ tbody.innerHTML=rows.map((x,i)=>`<tr><td>${x.date}</td><td><b>${x.reg}</b></td><td>${x.dep} → ${x.arr}</td><td>${x.type}</td><td><button class="btn" onclick="findPhoto(${i},this)">🔎 Найти</button><div id="p${i}"></div></td></tr>`).join('');
+};
+async function findPhoto(i,btn){
+ btn.disabled=true;btn.textContent='Ищу…';const x=rows[i];
+ const r=await fetch('/api/photos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(x)});const j=await r.json();
+ const box=document.getElementById('p'+i);
+ let html=j.photos.length?j.photos.map(p=>`<span class="photo"><a href="${p.link||'#'}" target="_blank">${p.src?`<img src="${p.src}">`:'Фото'}</a><small>${p.date||''} ${p.location||''} ${p.airport_match?'<span class="badge">airport</span>':''}</small></span>`).join(''):'<span class="muted">Фото через API не найдены.</span>';
+ html+=`<div class="row-actions"><a href="${j.jetphotos}" target="_blank"><button class="btn">Открыть JetPhotos</button></a></div>`;
+ box.innerHTML=html;btn.textContent='Готово';
+}
+</script>
+</body>
+</html>
