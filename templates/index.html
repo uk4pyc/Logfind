@@ -14,7 +14,7 @@ main{max-width:1280px;margin:28px auto;padding:0 18px}.panel{background:#fff;bor
 .progress{height:10px;background:#e9edf3;border-radius:20px;overflow:hidden;margin:14px 0}.bar{height:100%;width:0;background:#172033;transition:width .2s}
 .table{width:100%;border-collapse:collapse}.table th,.table td{padding:13px 9px;border-bottom:1px solid #edf0f4;text-align:left;vertical-align:top}.table th{font-size:12px;color:#6b7484;text-transform:uppercase}
 .photos{display:flex;flex-wrap:wrap;gap:6px}.photo{display:inline-flex;vertical-align:top;flex-direction:column;width:145px}.photo img{width:145px;height:96px;object-fit:cover;border-radius:9px;background:#e9edf3}.photo small{margin-top:4px;color:#687385;font-size:11px}
-.badge{font-size:10px;padding:3px 6px;border-radius:6px;background:#e8f6ed;color:#18733a}.links{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.link{font-size:12px;padding:7px 9px;border:1px solid #dbe2eb;border-radius:8px;color:#172033;text-decoration:none;background:#fff}.muted{color:#7a8493}.route{white-space:nowrap}
+.badge{font-size:10px;padding:3px 6px;border-radius:6px;background:#e8f6ed;color:#18733a}.links{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.link{font-size:12px;padding:7px 9px;border:1px solid #dbe2eb;border-radius:8px;color:#172033;text-decoration:none;background:#fff}.topPhoto img{width:190px;height:125px}.topPhoto{width:190px}.muted{color:#7a8493}.route{white-space:nowrap}
 </style>
 </head>
 <body>
@@ -32,6 +32,10 @@ main{max-width:1280px;margin:28px auto;padding:0 18px}.panel{background:#fff;bor
 <section class="panel" id="summary" style="display:none">
 <div class="stats"><div class="stat"><b id="count">0</b>полётов</div><div class="stat"><b id="regs">0</b>уникальных регистраций</div><div class="stat"><b>3</b>источника/поиска</div></div>
 </section>
+<section class="panel" id="topPanel" style="display:none">
+<h2 style="margin-top:0">📸 Найденные фотографии</h2>
+<div id="topPhotos" class="photos"></div>
+</section>
 <section class="panel" id="results" style="display:none">
 <table class="table"><thead><tr><th>Date</th><th>Registration</th><th>Route</th><th>Type</th><th>Автоматически найденные фото</th></tr></thead><tbody id="tbody"></tbody></table>
 </section>
@@ -47,12 +51,12 @@ parse.onclick=async()=>{
   const r=await fetch('/api/parse',{method:'POST',body:fd}); const j=await r.json();
   if(j.error){msg.textContent=j.error;parse.disabled=false;return}
   rows=j.rows; count.textContent=j.count; regs.textContent=j.unique_regs;
-  summary.style.display='block'; results.style.display='block';
+  summary.style.display='block'; topPanel.style.display='block'; results.style.display='block';
   render();
   const unique=j.rows.map(x=>x.reg).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
   progressWrap.style.display='block'; bar.style.width='0%';
-  msg.textContent=`Ищу фото для ${unique.length} уникальных бортов…`;
-  const br=await fetch('/api/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({regs:unique})});
+  msg.textContent=`Ищу фото по регистрации + ICAO аэропортам вылета/прилёта + дате…`;
+  const br=await fetch('/api/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:rows})});
   cache=await br.json();
   bar.style.width='100%';
   msg.textContent=`Готово: обработано ${unique.length} уникальных регистраций.`;
@@ -61,25 +65,20 @@ parse.onclick=async()=>{
 };
 
 function render(){
+  const found=[];
   tbody.innerHTML=rows.map((x,i)=>{
-    const photos=cache[x.reg]||[];
-    const targetAirport=(x.dep_icao||x.dep||'').toUpperCase();
-    const targetDate=x.date_iso||'';
-    const ranked=photos.map(p=>{
-      const t=(p.location||'').toUpperCase();
-      const pd=(p.date||'').slice(0,10);
-      const airportMatch=targetAirport && t.includes(targetAirport);
-      const dateMatch=targetDate && pd===targetDate;
-      const score=(dateMatch?50:0)+(airportMatch?40:0)+10;
-      return {...p, airportMatch, dateMatch, score};
-    }).sort((a,b)=>b.score-a.score);
-    const exact=ranked.filter(p=>p.dateMatch&&p.airportMatch);
-    const shown=(exact.length?exact:ranked).slice(0,6);
-    const photoHtml=shown.length?shown.map(p=>`<span class="photo"><a href="${p.link||'#'}" target="_blank">${p.src?`<img src="${p.src}">`:'Открыть фото'}</a><small>${p.date||''} ${p.location||''}<br><span class="badge">${p.dateMatch&&p.airportMatch?'EXACT MATCH':p.airportMatch?'AIRPORT MATCH':p.dateMatch?'DATE MATCH':'registration only'} · ${p.score}%</span></small></span>`).join(''):'<span class="muted">Точных фото через API не найдено.</span>';
-    const loaded=Object.prototype.hasOwnProperty.call(cache,x.reg);
-    const links=loaded?`<div class="links"><a class="link" target="_blank" href="${jet(x)}">JetPhotos</a><a class="link" target="_blank" href="${air(x)}">Airliners.net</a><a class="link" target="_blank" href="${google(x)}">Google Images</a><a class="link" target="_blank" href="${ps(x)}">PlaneSpotters</a></div>`:'';
-    return `<tr><td>${x.date}</td><td><b>${x.display_reg || x.reg}</b></td><td class="route">${x.dep_icao || x.dep} → ${x.arr_icao || x.arr}</td><td>${x.type}</td><td><div class="photos">${photoHtml}</div>${links}</td></tr>`;
+    const photos=cache[x.row]||[];
+    photos.forEach(p=>{ if(p.exact_match || p.airport_matches?.length || p.date_match) found.push({...p, flight:x}); });
+    const shown=photos.slice(0,6);
+    const photoHtml=shown.length?shown.map(p=>`<span class="photo"><a href="${p.link||'#'}" target="_blank">${p.src?`<img src="${p.src}">`:'Открыть фото'}</a><small>${p.date||''}<br>${p.location||''}<br><span class="badge">${p.exact_match?'EXACT':p.airport_matches?.length?'AIRPORT':p.date_match?'DATE':'REGISTRATION'} · ${p.score}%</span></small></span>`).join(''):'<span class="muted">Ничего не найдено.</span>';
+    return `<tr><td>${x.date}</td><td><b>${x.display_reg||x.reg}</b></td><td class="route">${x.dep_icao||x.dep} → ${x.arr_icao||x.arr}</td><td>${x.type}</td><td><div class="photos">${photoHtml}</div><div class="links"><a class="link" target="_blank" href="${jet(x)}">JetPhotos</a><a class="link" target="_blank" href="${air(x)}">Airliners.net</a><a class="link" target="_blank" href="${google(x)}">Google Images</a><a class="link" target="_blank" href="${ps(x)}">PlaneSpotters</a></div></td></tr>`;
   }).join('');
+  renderTop(found);
+}
+function renderTop(found){
+  const box=document.getElementById('topPhotos');
+  const list=found.sort((a,b)=>b.score-a.score).slice(0,30);
+  box.innerHTML=list.length?list.map(p=>`<span class="photo topPhoto"><a href="${p.link||'#'}" target="_blank">${p.src?`<img src="${p.src}">`:'Открыть фото'}</a><small><b>${p.flight.display_reg||p.flight.reg}</b> · ${p.flight.dep_icao||p.flight.dep} → ${p.flight.arr_icao||p.flight.arr}<br>${p.date||''} · ${p.location||''}<br><span class="badge">${p.exact_match?'EXACT MATCH':p.airport_matches?.length?'AIRPORT MATCH':p.date_match?'DATE MATCH':'REGISTRATION'} · ${p.score}%</span></small></span>`).join(''):'<span class="muted">Подходящих фотографий пока не найдено.</span>';
 }
 function q(v){return encodeURIComponent(v||'')}
 function airport(x){return x.dep_icao||x.dep||x.arr_icao||x.arr||''}
