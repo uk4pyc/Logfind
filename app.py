@@ -9,6 +9,16 @@ def norm(v):
     if pd.isna(v): return ""
     return re.sub(r"[\s\-]", "", str(v)).upper().strip()
 
+def format_reg(reg):
+    """Format aircraft registrations for human/web searches.
+    Example: A9CDHW -> A9C-DHW.
+    Existing hyphens are normalized first.
+    """
+    r = norm(reg)
+    if len(r) == 6:
+        return r[:3] + "-" + r[3:]
+    return r
+
 def search_planespotters(reg):
     try:
         url = "https://api.planespotters.net/pub/photos/reg/" + quote(norm(reg))
@@ -34,11 +44,11 @@ def jetphotos_url(reg, airport="", year=""):
     q = []
     if airport: q.append("keywords=" + quote(airport.upper()))
     if year: q.append("year=" + quote(year))
-    return "https://www.jetphotos.com/registration/" + quote(reg.upper()) + ("?" + "&".join(q) if q else "")
+    return "https://www.jetphotos.com/registration/" + quote(format_reg(reg)) + ("?" + "&".join(q) if q else "")
 
 def airliners_url(reg, airport=""):
     # Navigational search link; the site may change its query syntax over time.
-    terms = " ".join(x for x in [reg.upper(), airport.upper()] if x)
+    terms = " ".join(x for x in [format_reg(reg), airport.upper()] if x)
     return "https://www.airliners.net/search?keywords=" + quote(terms)
 
 @app.route("/")
@@ -69,6 +79,7 @@ def parse():
             "row": int(i)+2,
             "date": "" if pd.isna(r["Date"]) else str(r["Date"]),
             "reg": reg,
+            "display_reg": format_reg(reg),
             "dep": norm(r["DepPlace"]),
             "arr": norm(r["ArrPlace"]),
             "type": "" if pd.isna(r.get("ACType","")) else str(r.get("ACType","")),
@@ -98,7 +109,7 @@ def search_links():
     return jsonify({
         "jetphotos": jetphotos_url(reg, dep or arr, year),
         "airliners": airliners_url(reg, dep or arr),
-        "planespotters": "https://www.planespotters.net/photos/" + quote(reg)
+        "planespotters": "https://www.planespotters.net/photos/" + quote(format_reg(reg))
     })
 
 if __name__ == "__main__":

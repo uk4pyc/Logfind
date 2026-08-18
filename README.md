@@ -11,3 +11,8 @@
 - Excel не хранится на сервере после обработки.
 
 JetPhotos имеет отдельные поля для aircraft registration, photo location/airport и photo year. Фотографии остаются на исходных сайтах; приложение показывает превью/ссылки и не републикует коллекцию фотографий.
+
+
+## Registration formatting
+
+The app keeps a normalized registration internally but formats six-character registrations for web searches and display with the hyphen used by aviation photo databases, e.g. `A9CDHW` → `A9C-DHW`. Other registration formats are left unchanged.
