@@ -16,3 +16,8 @@ JetPhotos имеет отдельные поля для aircraft registration, p
 ## Registration formatting
 
 The app keeps a normalized registration internally but formats six-character registrations for web searches and display with the hyphen used by aviation photo databases, e.g. `A9CDHW` → `A9C-DHW`. Other registration formats are left unchanged.
+
+
+## Exact flight matching
+
+Airport codes are normalized to ICAO automatically (for example `LEJ` -> `EDDP`). The app ranks returned photo metadata by exact photo date and airport match. An `EXACT MATCH` is shown only when both match in the returned metadata. External sites are also opened with registration + ICAO + date search terms because not every photo database exposes a public API with all three filters.
