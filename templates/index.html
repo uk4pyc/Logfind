@@ -18,7 +18,7 @@ main{max-width:1280px;margin:28px auto;padding:0 18px}.panel{background:#fff;bor
 </style>
 </head>
 <body>
-<header><h1>✈️ Logbook Photo Finder</h1><p>Автоматический поиск фотографий по всей летной книжке.</p></header>
+<header><h1>✈️ Logbook Photo Finder</h1><p>Автоматический поиск по registration + ICAO airport + exact photo date.</p></header>
 <main>
 <section class="panel">
 <div class="drop">
@@ -63,20 +63,29 @@ parse.onclick=async()=>{
 function render(){
   tbody.innerHTML=rows.map((x,i)=>{
     const photos=cache[x.reg]||[];
-    const airportPhotos=photos.filter(p=>{
+    const targetAirport=(x.dep_icao||x.dep||'').toUpperCase();
+    const targetDate=x.date_iso||'';
+    const ranked=photos.map(p=>{
       const t=(p.location||'').toUpperCase();
-      return (x.dep && t.includes(x.dep)) || (x.arr && t.includes(x.arr));
-    });
-    const shown=(airportPhotos.length?airportPhotos:photos).slice(0,6);
-    const photoHtml=shown.length?shown.map(p=>`<span class="photo"><a href="${p.link||'#'}" target="_blank">${p.src?`<img src="${p.src}">`:'Открыть фото'}</a><small>${p.date||''} ${p.location||''} ${airportPhotos.includes(p)?'<span class="badge">airport match</span>':''}</small></span>`).join(''):'<span class="muted">Автоматическое API-фото не найдено.</span>';
+      const pd=(p.date||'').slice(0,10);
+      const airportMatch=targetAirport && t.includes(targetAirport);
+      const dateMatch=targetDate && pd===targetDate;
+      const score=(dateMatch?50:0)+(airportMatch?40:0)+10;
+      return {...p, airportMatch, dateMatch, score};
+    }).sort((a,b)=>b.score-a.score);
+    const exact=ranked.filter(p=>p.dateMatch&&p.airportMatch);
+    const shown=(exact.length?exact:ranked).slice(0,6);
+    const photoHtml=shown.length?shown.map(p=>`<span class="photo"><a href="${p.link||'#'}" target="_blank">${p.src?`<img src="${p.src}">`:'Открыть фото'}</a><small>${p.date||''} ${p.location||''}<br><span class="badge">${p.dateMatch&&p.airportMatch?'EXACT MATCH':p.airportMatch?'AIRPORT MATCH':p.dateMatch?'DATE MATCH':'registration only'} · ${p.score}%</span></small></span>`).join(''):'<span class="muted">Точных фото через API не найдено.</span>';
     const loaded=Object.prototype.hasOwnProperty.call(cache,x.reg);
-    const links=loaded?`<div class="links"><a class="link" target="_blank" href="${jet(x)}">JetPhotos</a><a class="link" target="_blank" href="${air(x)}">Airliners.net</a><a class="link" target="_blank" href="${ps(x)}">PlaneSpotters</a></div>`:'';
-    return `<tr><td>${x.date}</td><td><b>${x.display_reg || x.reg}</b></td><td class="route">${x.dep} → ${x.arr}</td><td>${x.type}</td><td><div class="photos">${photoHtml}</div>${links}</td></tr>`;
+    const links=loaded?`<div class="links"><a class="link" target="_blank" href="${jet(x)}">JetPhotos</a><a class="link" target="_blank" href="${air(x)}">Airliners.net</a><a class="link" target="_blank" href="${google(x)}">Google Images</a><a class="link" target="_blank" href="${ps(x)}">PlaneSpotters</a></div>`:'';
+    return `<tr><td>${x.date}</td><td><b>${x.display_reg || x.reg}</b></td><td class="route">${x.dep_icao || x.dep} → ${x.arr_icao || x.arr}</td><td>${x.type}</td><td><div class="photos">${photoHtml}</div>${links}</td></tr>`;
   }).join('');
 }
 function q(v){return encodeURIComponent(v||'')}
-function jet(x){return `https://www.jetphotos.com/registration/${q(x.display_reg||x.reg)}?keywords=${q(x.dep||x.arr)}${x.date?`&year=${q(String(x.date).slice(-4))}`:''}`}
-function air(x){return `https://www.airliners.net/search?keywords=${q((x.display_reg||x.reg)+' '+(x.dep||x.arr))}`}
+function airport(x){return x.dep_icao||x.dep||x.arr_icao||x.arr||''}
+function jet(x){return `https://www.jetphotos.com/registration/${q(x.display_reg||x.reg)}?keywords=${q(airport(x))}${x.date_iso?`&year=${q(x.date_iso.slice(0,4))}`:''}`}
+function air(x){return `https://www.airliners.net/search?keywords=${q((x.display_reg||x.reg)+' '+airport(x)+' '+(x.date_iso||''))}`}
+function google(x){return `https://www.google.com/search?tbm=isch&q=${q('"'+(x.display_reg||x.reg)+'" "'+airport(x)+'" "'+(x.date_iso||'')+'"')}`}
 function ps(x){return `https://www.planespotters.net/photos/${q(x.display_reg||x.reg)}`}
 </script>
 </body>
