@@ -1,22 +1,13 @@
 
-# Logbook Photo Finder — Web 1.0
+# Logbook Photo Finder 2.0
 
-Полноценный локальный веб-MVP.
+Автоматическая обработка всей летной книжки.
 
-## Запуск
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-python app.py
-```
-Открой http://localhost:8501
+- Один клик после загрузки Excel.
+- Поиск выполняется по уникальным registration, поэтому один и тот же борт не запрашивается заново для каждого сектора.
+- Фотографии автоматически показываются для всех строк.
+- Приоритет отдается фото, в метаданных которых встречается аэропорт вылета/прилета.
+- Для каждой строки есть навигационные ссылки на JetPhotos, Airliners.net и PlaneSpotters.
+- Excel не хранится на сервере после обработки.
 
-## Как работает
-Загружается Excel, читаются Date / Reg / DepPlace / ArrPlace. Сервер ищет фотографии самолета по registration через публичный endpoint Planespotters и показывает ссылки на JetPhotos для более точного поиска.
-
-JetPhotos позволяет фильтровать фотографии по aircraft, airport, keywords и photo year. Фотографии принадлежат их правообладателям, поэтому сайт показывает превью/ссылки и не копирует коллекцию фотографий к себе.
-
-## Для публичного деплоя
-Нужен HTTPS-хостинг (например, Render/Railway/Fly.io/VPS) и production WSGI-сервер. Для большой летной книжки следует добавить кэш, очередь запросов и rate limiting.
+JetPhotos имеет отдельные поля для aircraft registration, photo location/airport и photo year. Фотографии остаются на исходных сайтах; приложение показывает превью/ссылки и не републикует коллекцию фотографий.

@@ -1,0 +1,83 @@
+
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Logbook Photo Finder</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#172033;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+header{background:#101827;color:#fff;padding:28px 5vw}header h1{margin:0;font-size:28px}header p{margin:7px 0 0;color:#aeb9ca}
+main{max-width:1280px;margin:28px auto;padding:0 18px}.panel{background:#fff;border:1px solid #e3e8f0;border-radius:18px;padding:20px;margin-bottom:18px;box-shadow:0 8px 30px #1720330b}
+.drop{border:2px dashed #b9c5d8;border-radius:15px;padding:28px;text-align:center}.btn{border:0;border-radius:10px;padding:11px 16px;background:#172033;color:#fff;font-weight:700;cursor:pointer}.btn:disabled{opacity:.45}
+.stats{display:flex;gap:12px;flex-wrap:wrap}.stat{background:#f2f5f9;border-radius:12px;padding:12px 16px}.stat b{font-size:20px;display:block}
+.progress{height:10px;background:#e9edf3;border-radius:20px;overflow:hidden;margin:14px 0}.bar{height:100%;width:0;background:#172033;transition:width .2s}
+.table{width:100%;border-collapse:collapse}.table th,.table td{padding:13px 9px;border-bottom:1px solid #edf0f4;text-align:left;vertical-align:top}.table th{font-size:12px;color:#6b7484;text-transform:uppercase}
+.photos{display:flex;flex-wrap:wrap;gap:6px}.photo{display:inline-flex;vertical-align:top;flex-direction:column;width:145px}.photo img{width:145px;height:96px;object-fit:cover;border-radius:9px;background:#e9edf3}.photo small{margin-top:4px;color:#687385;font-size:11px}
+.badge{font-size:10px;padding:3px 6px;border-radius:6px;background:#e8f6ed;color:#18733a}.links{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.link{font-size:12px;padding:7px 9px;border:1px solid #dbe2eb;border-radius:8px;color:#172033;text-decoration:none;background:#fff}.muted{color:#7a8493}.route{white-space:nowrap}
+</style>
+</head>
+<body>
+<header><h1>✈️ Logbook Photo Finder</h1><p>Автоматический поиск фотографий по всей летной книжке.</p></header>
+<main>
+<section class="panel">
+<div class="drop">
+<strong>Загрузи Excel с летной книжкой</strong><br>
+<input id="file" type="file" accept=".xlsx,.xls"><br>
+<button class="btn" id="parse" disabled>Загрузить и автоматически искать фото</button>
+<div id="msg" class="muted"></div>
+<div class="progress" id="progressWrap" style="display:none"><div class="bar" id="bar"></div></div>
+</div>
+</section>
+<section class="panel" id="summary" style="display:none">
+<div class="stats"><div class="stat"><b id="count">0</b>полётов</div><div class="stat"><b id="regs">0</b>уникальных регистраций</div><div class="stat"><b>3</b>источника/поиска</div></div>
+</section>
+<section class="panel" id="results" style="display:none">
+<table class="table"><thead><tr><th>Date</th><th>Registration</th><th>Route</th><th>Type</th><th>Автоматически найденные фото</th></tr></thead><tbody id="tbody"></tbody></table>
+</section>
+</main>
+<script>
+let rows=[], cache={};
+
+file.onchange=()=>parse.disabled=!file.files.length;
+
+parse.onclick=async()=>{
+  parse.disabled=true; msg.textContent='Читаю Excel…';
+  const fd=new FormData(); fd.append('file',file.files[0]);
+  const r=await fetch('/api/parse',{method:'POST',body:fd}); const j=await r.json();
+  if(j.error){msg.textContent=j.error;parse.disabled=false;return}
+  rows=j.rows; count.textContent=j.count; regs.textContent=j.unique_regs;
+  summary.style.display='block'; results.style.display='block';
+  render();
+  const unique=j.rows.map(x=>x.reg).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+  progressWrap.style.display='block'; bar.style.width='0%';
+  msg.textContent=`Ищу фото для ${unique.length} уникальных бортов…`;
+  const br=await fetch('/api/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({regs:unique})});
+  cache=await br.json();
+  bar.style.width='100%';
+  msg.textContent=`Готово: обработано ${unique.length} уникальных регистраций.`;
+  render();
+  parse.disabled=false;
+};
+
+function render(){
+  tbody.innerHTML=rows.map((x,i)=>{
+    const photos=cache[x.reg]||[];
+    const airportPhotos=photos.filter(p=>{
+      const t=(p.location||'').toUpperCase();
+      return (x.dep && t.includes(x.dep)) || (x.arr && t.includes(x.arr));
+    });
+    const shown=(airportPhotos.length?airportPhotos:photos).slice(0,6);
+    const photoHtml=shown.length?shown.map(p=>`<span class="photo"><a href="${p.link||'#'}" target="_blank">${p.src?`<img src="${p.src}">`:'Открыть фото'}</a><small>${p.date||''} ${p.location||''} ${airportPhotos.includes(p)?'<span class="badge">airport match</span>':''}</small></span>`).join(''):'<span class="muted">Автоматическое API-фото не найдено.</span>';
+    const loaded=Object.prototype.hasOwnProperty.call(cache,x.reg);
+    const links=loaded?`<div class="links"><a class="link" target="_blank" href="${jet(x)}">JetPhotos</a><a class="link" target="_blank" href="${air(x)}">Airliners.net</a><a class="link" target="_blank" href="${ps(x)}">PlaneSpotters</a></div>`:'';
+    return `<tr><td>${x.date}</td><td><b>${x.reg}</b></td><td class="route">${x.dep} → ${x.arr}</td><td>${x.type}</td><td><div class="photos">${photoHtml}</div>${links}</td></tr>`;
+  }).join('');
+}
+function q(v){return encodeURIComponent(v||'')}
+function jet(x){return `https://www.jetphotos.com/registration/${q(x.reg)}?keywords=${q(x.dep||x.arr)}${x.date?`&year=${q(String(x.date).slice(-4))}`:''}`}
+function air(x){return `https://www.airliners.net/search?keywords=${q(x.reg+' '+(x.dep||x.arr))}`}
+function ps(x){return `https://www.planespotters.net/photos/${q(x.reg)}`}
+</script>
+</body>
+</html>
