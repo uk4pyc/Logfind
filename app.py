@@ -43,24 +43,54 @@ def format_reg(reg):
         return r[:3] + "-" + r[3:]
     return r
 
-def search_planespotters(reg):
+JETPHOTOS_API = "https://jp.rewis.workers.dev/"
+
+def search_jetphotos(reg, airport, year):
+    """Search JetPhotos through an unofficial JSON proxy.
+    We query registration + ICAO airport + year, then exact-match
+    returned photo metadata by registration, airport and date.
+    """
+    params = {
+        "page": "1",
+        "sort-order": "0",
+        "keywords-contain": "0",
+        "keywords-type": "all",
+        "keywords": f"{format_reg(reg)} {airport_icao(airport)}",
+        "year": str(year) if year else "all",
+    }
     try:
-        url = "https://api.planespotters.net/pub/photos/reg/" + quote(norm(reg))
-        r = requests.get(url, headers={"User-Agent":"LogbookPhotoFinder/2.0"}, timeout=15)
+        r = requests.get(JETPHOTOS_API, params=params,
+                         headers={"User-Agent":"LogbookPhotoFinder/2.3"},
+                         timeout=25)
         r.raise_for_status()
         return r.json().get("photos", [])
     except Exception:
         return []
 
-def photo_info(p):
-    thumb = p.get("thumbnail")
-    src = thumb.get("src","") if isinstance(thumb, dict) else (thumb or "")
+def search_planespotters(reg):
+    try:
+        url = "https://api.planespotters.net/pub/photos/reg/" + quote(norm(reg))
+        r = requests.get(url, headers={"User-Agent":"LogbookPhotoFinder/2.3"}, timeout=15)
+        r.raise_for_status()
+        return r.json().get("photos", [])
+    except Exception:
+        return []
+
+def photo_info(p, source="JetPhotos"):
+    thumb = p.get("thumbnailUrl") or p.get("thumbnail") or p.get("imageUrl") or ""
+    if isinstance(thumb, dict):
+        thumb = thumb.get("src","")
+    src = thumb
+    link = p.get("photoPageUrl") or p.get("link") or p.get("url") or ""
+    date = p.get("photoDate") or p.get("date") or p.get("photo_date") or ""
     return {
         "src": src,
-        "link": p.get("link") or p.get("url") or "",
+        "link": link,
         "location": p.get("location") or "",
         "photographer": p.get("photographer") or "",
-        "date": p.get("date") or p.get("photo_date") or ""
+        "date": date,
+        "registration": p.get("registration") or "",
+        "source": source,
     }
 
 def photo_date_key(value):
@@ -135,12 +165,59 @@ def parse():
 @app.post("/api/batch")
 def batch():
     data = request.get_json(force=True)
-    regs = list(dict.fromkeys(data.get("regs", [])))
-    out = {}
-    for reg in regs:
-        raw = search_planespotters(reg)
-        out[reg] = [photo_info(p) for p in raw[:12]]
-    return jsonify(out)
+    rows = data.get("rows", [])
+    results = {}
+    for row in rows:
+        reg = norm(row.get("reg",""))
+        date = row.get("date_iso") or normalize_date(row.get("date",""))
+        year = date[:4] if date else ""
+        airports = []
+        for a in (row.get("dep_icao") or row.get("dep",""), row.get("arr_icao") or row.get("arr","")):
+            a = airport_icao(a)
+            if a and a not in airports:
+                airports.append(a)
+
+        candidates = []
+        # Search separately for departure and arrival airports.
+        for airport in airports:
+            for p in search_jetphotos(reg, airport, year):
+                x = photo_info(p, "JetPhotos")
+                x["search_airport"] = airport
+                candidates.append(x)
+
+        # Fallback: registration-only sources if airport search returns nothing.
+        if not candidates:
+            for p in search_planespotters(reg)[:12]:
+                x = photo_info(p, "PlaneSpotters")
+                x["search_airport"] = ""
+                candidates.append(x)
+
+        # Exact matching against returned metadata.
+        unique=[]
+        seen=set()
+        for x in candidates:
+            key=(x.get("link"),x.get("src"),x.get("date"),x.get("location"))
+            if key in seen: continue
+            seen.add(key)
+            pdate=normalize_date(x.get("date",""))
+            loc=str(x.get("location","")).upper()
+            preg=norm(x.get("registration",""))
+            airport_matches=[a for a in airports if a and a in loc]
+            date_match=bool(date and pdate == date)
+            reg_match=(not preg) or preg == reg
+            score=(50 if date_match else 0)+(35 if airport_matches else 0)+(15 if reg_match else 0)
+            x.update({
+                "date_match": date_match,
+                "airport_matches": airport_matches,
+                "reg_match": reg_match,
+                "score": score,
+                "exact_match": bool(date_match and airport_matches and reg_match),
+            })
+            unique.append(x)
+
+        unique.sort(key=lambda x:(x["exact_match"], x["score"]), reverse=True)
+        results[row.get("row", reg)] = unique[:12]
+    return jsonify(results)
 
 @app.post("/api/search-links")
 def search_links():

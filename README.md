@@ -21,3 +21,10 @@ The app keeps a normalized registration internally but formats six-character reg
 ## Exact flight matching
 
 Airport codes are normalized to ICAO automatically (for example `LEJ` -> `EDDP`). The app ranks returned photo metadata by exact photo date and airport match. An `EXACT MATCH` is shown only when both match in the returned metadata. External sites are also opened with registration + ICAO + date search terms because not every photo database exposes a public API with all three filters.
+
+
+## 2.3 automatic matching
+
+The app now searches each flight separately for BOTH ICAO airports (departure and arrival), using registration + ICAO airport + photo year against a JetPhotos JSON proxy, then checks the returned photo metadata for the exact photo date and airport. Matching photos are also collected into a large gallery at the top of the page.
+
+Important: JetPhotos has an advanced search with aircraft registration, airport/location and photo year, and its photo metadata includes an exact photo date and location. citeturn0search0turn3view0
